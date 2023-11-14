@@ -1,5 +1,5 @@
-use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::{read, Event};
+use crossterm::cursor::{Hide, MoveTo, MoveToRow, Show};
+use crossterm::event::Event;
 use crossterm::style::{Print, PrintStyledContent, Stylize};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear};
 use crossterm::{event, execute, QueueableCommand};
@@ -50,16 +50,19 @@ impl UI {
 
     pub fn draw(&self) -> std::io::Result<()> {
         let mut term = stdout();
-        term.queue(Hide)?
-            .queue(Clear(crossterm::terminal::ClearType::All))?;
         let size = match termsize::get() {
             Some(size) => size,
             None => panic!("Failed to get terminal size!"),
         };
-        term.queue(MoveTo(0, size.rows - 2))?
+        for row in (0..size.rows - 1).rev() {
+            term.queue(MoveToRow(row))?
+                .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
+        }
+        term.queue(Hide)?
+            .queue(MoveTo(0, size.rows - 2))?
             .queue(PrintStyledContent(self.info.clone().black().on_white()))?;
 
-        for row in zip((0..size.rows - 2).rev(), 0..size.rows - 2) {
+        for row in zip((0..=size.rows - 3).rev(), 0..=size.rows - 3) {
             term.queue(MoveTo(0, row.0))?;
             if usize::from(row.1) < self.message.len() {
                 term.queue(Print(&self.message[row.1.into()]))?;
@@ -69,7 +72,27 @@ impl UI {
         Ok(())
     }
 
-    pub fn input(&self) -> Result<String, std::io::Error> {
+    pub fn key(key: char) -> Result<bool, std::io::Error> {
+        if event::poll(std::time::Duration::from_millis(0))? {
+            match event::read()? {
+                Event::Key(event) => match event.code {
+                    event::KeyCode::Char(k) => {
+                        if key == k {
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }
+                    _ => Ok(false),
+                },
+                _ => Ok(false),
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn input() -> Result<String, std::io::Error> {
         let mut term = stdout();
         let size = match termsize::get() {
             Some(size) => size,
@@ -91,10 +114,13 @@ impl UI {
                 event::KeyCode::Enter => break input,
                 _ => continue,
             }
-            self.draw()?;
-            term.queue(MoveTo(0, size.rows - 1))?.queue(Print(&input))?;
+            term.queue(MoveTo(0, size.rows))?
+                .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?
+                .queue(Print(&input))?;
             term.flush()?;
         };
+        term.queue(MoveTo(0, size.rows))?
+            .queue(Clear(crossterm::terminal::ClearType::CurrentLine))?;
         Ok(i)
     }
 }
