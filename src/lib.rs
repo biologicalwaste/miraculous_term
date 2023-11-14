@@ -73,7 +73,7 @@ impl UI {
     }
 
     pub fn key(key: char) -> Result<bool, std::io::Error> {
-        if event::poll(std::time::Duration::from_millis(0))? {
+        if event::poll(std::time::Duration::from_millis(50))? {
             match event::read()? {
                 Event::Key(event) => match event.code {
                     event::KeyCode::Char(k) => {
